@@ -19,6 +19,7 @@ def train_model():
     customer_ids = train['customer_id'].values
     product_ids = train['product_id'].values
     ratings = train['rating'].values
+    
 
     # Train-test split
     train_users, test_users, train_items, test_items, train_ratings, test_ratings = train_test_split(
