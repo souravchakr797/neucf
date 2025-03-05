@@ -17,7 +17,7 @@ def train_model():
     num_items=len(item_encoder.classes_),
     user_metadata=user_metadata_np, 
     item_metadata=product_metadata_np,
-    epochs=5, 
+    epochs=10, 
     batch_size=32
 )
     model_dir = "models"

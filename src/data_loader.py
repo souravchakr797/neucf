@@ -9,10 +9,10 @@ def load_data():
     print("🔄 Loading data...")
 
     # Load datasets
-    orders = pd.read_csv("data/olist_orders_dataset.csv", nrows=10000)
-    order_items = pd.read_csv("data/olist_order_items_dataset.csv", nrows=5000)
-    customers = pd.read_csv("data/olist_customers_dataset.csv", nrows=5000)
-    products = pd.read_csv("data/olist_products_dataset.csv", nrows=5000)
+    orders = pd.read_csv("data/olist_orders_dataset.csv")
+    order_items = pd.read_csv("data/olist_order_items_dataset.csv")
+    customers = pd.read_csv("data/olist_customers_dataset.csv")
+    products = pd.read_csv("data/olist_products_dataset.csv")
 
     # Merge orders with customers to get user demographics
     user_data = orders.merge(customers, on="customer_id")[["customer_id", "customer_city", "customer_state"]]
