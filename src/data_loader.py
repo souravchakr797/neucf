@@ -4,80 +4,76 @@ import pickle
 import os
 from sklearn.preprocessing import LabelEncoder
 
-
 def load_data():
     """Load and preprocess datasets, updating encoders if new data exists."""
     print("🔄 Loading data...")
 
     # Load datasets
-    orders = pd.read_csv("data/olist_orders_dataset.csv")
-    order_items = pd.read_csv("data/olist_order_items_dataset.csv")
-    customers = pd.read_csv("data/olist_customers_dataset.csv")
+    orders = pd.read_csv("data/olist_orders_dataset.csv", nrows=10000)
+    order_items = pd.read_csv("data/olist_order_items_dataset.csv", nrows=5000)
+    customers = pd.read_csv("data/olist_customers_dataset.csv", nrows=5000)
+    products = pd.read_csv("data/olist_products_dataset.csv", nrows=5000)
 
-    # Check if required columns are present
-    if 'customer_id' not in customers.columns:
-        raise ValueError("Error: 'customer_id' column is missing in the customers dataset.")
-    if 'order_id' not in orders.columns or 'customer_id' not in orders.columns:
-        raise ValueError("Error: 'order_id' or 'customer_id' column is missing in the orders dataset.")
-    if 'order_id' not in order_items.columns or 'product_id' not in order_items.columns:
-        raise ValueError("Error: 'order_id' or 'product_id' column is missing in the order_items dataset.")
+    # Merge orders with customers to get user demographics
+    user_data = orders.merge(customers, on="customer_id")[["customer_id", "customer_city", "customer_state"]]
+    
+    # Merge order_items with products to get product metadata
+    product_data = order_items.merge(products, on="product_id")[["product_id", "product_category_name"]]
+    
+    # Drop duplicates to have a unique mapping
+    user_data = user_data.drop_duplicates(subset=["customer_id"]).reset_index(drop=True)
+    product_data = product_data.drop_duplicates(subset=["product_id"]).reset_index(drop=True)
+   
 
-    # Merge datasets to get user-product interactions
-    data = order_items.merge(orders, on="order_id").merge(customers, on="customer_id")
+    # Initialize encoders
+    user_encoder = LabelEncoder()
+    item_encoder = LabelEncoder()
+    city_encoder = LabelEncoder()
+    state_encoder = LabelEncoder()
+    category_encoder = LabelEncoder()
 
-    # Remove rows where either customer_id or product_id is missing
-    data = data.dropna(subset=['customer_id', 'product_id'])
+    # Encode customer_id and product_id
+    user_data["user_id"] = user_encoder.fit_transform(user_data["customer_id"])
+    product_data["item_id"] = item_encoder.fit_transform(product_data["product_id"])
 
-    # Select the necessary columns
-    data = data[['customer_id', 'product_id']]
+    # Encode customer city & state
+    user_data["customer_city_encoded"] = city_encoder.fit_transform(user_data["customer_city"])
+    user_data["customer_state_encoded"] = state_encoder.fit_transform(user_data["customer_state"])
 
-    # Paths for encoder files
-    user_encoder_path = "models/user_encoder.pkl"
-    item_encoder_path = "models/item_encoder.pkl"
+    # Encode product category name
+    product_data["product_category_encoded"] = category_encoder.fit_transform(product_data["product_category_name"])
 
-    # Check if encoders exist
-    if os.path.exists(user_encoder_path) and os.path.exists(item_encoder_path):
-        print("✅ Found pre-existing encoders, updating them...")
+    # Keep only required columns
+    user_metadata = user_data[["user_id", "customer_city_encoded", "customer_state_encoded"]]
+    product_metadata = product_data[["item_id", "product_category_encoded"]]
 
-        # Load existing encoders
-        with open(user_encoder_path, "rb") as f:
-            user_encoder = pickle.load(f)
-        with open(item_encoder_path, "rb") as f:
-            item_encoder = pickle.load(f)
+    # Create user-item interactions
+    interactions = order_items[["order_id", "product_id"]].merge(orders[["order_id", "customer_id"]], on="order_id")
+    interactions = interactions.merge(user_data[["customer_id", "user_id"]], on="customer_id")
+    interactions = interactions.merge(product_data[["product_id", "item_id"]], on="product_id")
+    interactions = interactions[["user_id", "item_id"]].drop_duplicates()
 
-        # Merge old and new categories
-        all_users = list(user_encoder.classes_) + list(data['customer_id'].unique())
-        all_items = list(item_encoder.classes_) + list(data['product_id'].unique())
+    # Add implicit feedback (1 for purchased items)
+    interactions["label"] = 1
 
-        # Refit encoders with all known IDs
-        user_encoder = LabelEncoder().fit(all_users)
-        item_encoder = LabelEncoder().fit(all_items)
+    # Convert metadata to numpy arrays for model training
+    user_metadata_np = user_metadata.drop(columns=["user_id"]).to_numpy()
+    product_metadata_np = product_metadata.drop(columns=["item_id"]).to_numpy()
 
-    else:
-        print("⚠️ Encoders not found! Creating new encoders...")
-        user_encoder = LabelEncoder().fit(data['customer_id'])
-        item_encoder = LabelEncoder().fit(data['product_id'])
-
-    # Transform data using updated encoders
-    data['customer_id'] = user_encoder.transform(data['customer_id'])
-    data['product_id'] = item_encoder.transform(data['product_id'])
-
-    # Save updated encoders
-    os.makedirs("models", exist_ok=True)  # Ensure models directory exists
-    with open(user_encoder_path, "wb") as f:
+    # Save encoders
+    os.makedirs("models", exist_ok=True)
+    with open("models/user_encoder.pkl", "wb") as f:
         pickle.dump(user_encoder, f)
-    with open(item_encoder_path, "wb") as f:
+    with open("models/item_encoder.pkl", "wb") as f:
         pickle.dump(item_encoder, f)
-
-    print(f"✅ Total unique users: {len(user_encoder.classes_)}")
-    print(f"✅ Total unique products: {len(item_encoder.classes_)}")
-
-    # Implicit feedback: purchase = positive interaction
-    data['rating'] = 1
-
-    print(f"✅ Data Loaded: {len(data)} total samples")
-    return data, len(user_encoder.classes_), len(item_encoder.classes_)
-
-
-if __name__ == "__main__":
-    train, num_users, num_items = load_data()
+    with open("models/city_encoder.pkl", "wb") as f:
+        pickle.dump(city_encoder, f)
+    with open("models/state_encoder.pkl", "wb") as f:
+        pickle.dump(state_encoder, f)
+    with open("models/category_encoder.pkl", "wb") as f:
+        pickle.dump(category_encoder, f)
+    
+    print("✅ Encoders saved successfully!")
+    print("Processed data ready for training!")
+    
+    return interactions, user_encoder, item_encoder, user_metadata_np, product_metadata_np
