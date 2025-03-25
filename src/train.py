@@ -9,7 +9,7 @@ from model import train_neucf, get_latest_pretrained_model
 from sklearn.model_selection import train_test_split
 
 def train_model():
-    interactions, user_encoder, item_encoder, user_metadata_np, product_metadata_np,  = load_data()
+    interactions, user_encoder, item_encoder, user_metadata_np, product_metadata_np, category_encoder, product_data = load_data()
 
     model = train_neucf(
     user_item_interactions=interactions, 
@@ -17,7 +17,7 @@ def train_model():
     num_items=len(item_encoder.classes_),
     user_metadata=user_metadata_np, 
     item_metadata=product_metadata_np,
-    epochs=10, 
+    epochs=3, 
     batch_size=32
 )
     model_dir = "models"

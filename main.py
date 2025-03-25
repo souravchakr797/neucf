@@ -5,6 +5,8 @@ import numpy as np
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 from src.predict import recommend_top_5_products
+import pandas as pd
+
 
 # Load the encoders
 def load_pickle(file_path):
@@ -30,11 +32,18 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         if parsed_path.path == "/neucf-recommend":
             user_id = query_params.get("user_id", [None])[0]
+            product_categories = query_params.get("product_category", [])
 
             if not user_id:
                 self.send_response(400)
                 self.end_headers()
                 self.wfile.write(b"Missing user_id parameter")
+                return
+
+            if not product_categories:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"Missing product_category parameter")
                 return
 
             try:
@@ -50,17 +59,18 @@ class RequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(b"No trained model found")
                     return
 
-                all_product_ids = list(item_encoder.classes_)
+                # Ensure product_categories is a list
+                if isinstance(product_categories, str):  
+                    product_categories = [product_categories]  # Convert single category to list
 
                 print(f"✅ latest_model: {latest_model}")
-                print(f"✅ Calling recommend_top_5_products() for user_id: {user_id}")
+                print(f"✅ Calling recommend_top_5_products() for user_id: {user_id} with categories: {product_categories}")
 
                 # Call recommend_top_5_products function
-                top_5_recommendations = recommend_top_5_products(user_id, latest_model)
+                top_5_recommendations = recommend_top_5_products(user_id, latest_model, product_categories)
                 if isinstance(top_5_recommendations, np.ndarray):
                     top_5_recommendations = top_5_recommendations.tolist()
 
-                
                 response = json.dumps({"user_id": user_id, "top_5_recommendations": top_5_recommendations})
 
                 self.send_response(200)
@@ -71,7 +81,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             except ValueError as e:
                 self.send_response(400)
                 self.end_headers()
-                self.wfile.write(f"Invalid user_id: {str(e)}".encode())
+                self.wfile.write(f"Invalid input: {str(e)}".encode())
 
             except Exception as e:
                 self.send_response(500)
@@ -86,4 +96,4 @@ class RequestHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", 8080), RequestHandler)
     print("🚀 Serving API at http://localhost:8080")
-    server.serve_forever()
+    server.serve_forever()    
